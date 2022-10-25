@@ -45,56 +45,57 @@ class HedgeEngineTest(bpy.types.Operator, ImportHelper):
     def draw(self, context):
         layout = self.layout
         layout.prop(self, "import_strips")
+
     def execute(self, context):
-        CurCollection = bpy.data.collections.new("Mesh Collection")#Make Collection per lmd loaded
-        bpy.context.scene.collection.children.link(CurCollection)
-        self.SkelPath = os.path.splitext(self.filepath)[0]+".skl.pxd"
-        
-        CurFile = open(self.filepath,"rb")
+        dirname = os.path.dirname(self.filepath)
+        for f in self.files:
+            filepath = os.path.join(dirname, f.name)
+            self.SkelPath = os.path.splitext(filepath)[0]+".skl.pxd"
 
-        CurFile.seek(0x8)
-        tmpPointer = int.from_bytes(CurFile.read(4),byteorder='big')
-        CurFile.seek(tmpPointer)
-        tmpPointer = int.from_bytes(CurFile.read(4),byteorder='big')
-        CurFile.seek(tmpPointer+0xC)
-        MeshJump1Count = int.from_bytes(CurFile.read(4),byteorder='big')
-        MeshJump1 = int.from_bytes(CurFile.read(4),byteorder='big')+0x10
-        CurFile.seek(0x8,1)
-        BoneCount = int.from_bytes(CurFile.read(4),byteorder='big')
-        BoneNameOffset = int.from_bytes(CurFile.read(4),byteorder='big')+0x10
-        BonePosOffset = int.from_bytes(CurFile.read(4),byteorder='big')+0x10
-        
-        ObjArm = parse_skeleton(self,CurCollection)
-        self.BoneRef = []
-        
-        for MJ1 in range(MeshJump1Count):
-            CurFile.seek(MeshJump1+4*MJ1)
-            CurFile.seek(int.from_bytes(CurFile.read(4),byteorder='big')+0x10)#reads pointer to mesh count
-            MeshCount = int.from_bytes(CurFile.read(4),byteorder='big')
-            if MeshCount == 0:
-                MeshCount = 1
-            MeshTableOffset = int.from_bytes(CurFile.read(4),byteorder='big')+0x10
-            MaterialCount = int.from_bytes(CurFile.read(4),byteorder='big')
-            MaterialTableOffset = int.from_bytes(CurFile.read(4),byteorder='big')+0x10
-            
+            CurFile = open(filepath,"rb")
+            CurCollection = bpy.data.collections.new(f.name) # Make Collection per lmd loaded
+            bpy.context.scene.collection.children.link(CurCollection)
 
+            CurFile.seek(0x8)
+            tmpPointer = int.from_bytes(CurFile.read(4),byteorder='big')
+            CurFile.seek(tmpPointer)
+            tmpPointer = int.from_bytes(CurFile.read(4),byteorder='big')
+            CurFile.seek(tmpPointer+0xC)
+            MeshJump1Count = int.from_bytes(CurFile.read(4),byteorder='big')
+            MeshJump1 = int.from_bytes(CurFile.read(4),byteorder='big')+0x10
+            CurFile.seek(0x8,1)
+            BoneCount = int.from_bytes(CurFile.read(4),byteorder='big')
+            BoneNameOffset = int.from_bytes(CurFile.read(4),byteorder='big')+0x10
+            BonePosOffset = int.from_bytes(CurFile.read(4),byteorder='big')+0x10
             
-            if os.path.exists(self.SkelPath):
-                parse_boneref_names(self,CurFile,BoneCount,BoneNameOffset)
+            ObjArm = parse_skeleton(self,CurCollection)
+            self.BoneRef = []
             
-            if BoneCount <=255:
-                self.BoneRefSize = 1
-            else:
-                self.BoneRefSize = 2
-            for mc in range(MeshCount):
-                CurFile.seek(MeshTableOffset+4*mc)
-                MeshHeader = int.from_bytes(CurFile.read(4),byteorder='big')+0x10
-                parse_mesh(self,CurFile,MeshHeader,CurCollection,ObjArm)
-            
+            for MJ1 in range(MeshJump1Count):
+                CurFile.seek(MeshJump1+4*MJ1)
+                CurFile.seek(int.from_bytes(CurFile.read(4),byteorder='big')+0x10)#reads pointer to mesh count
+                MeshCount = int.from_bytes(CurFile.read(4),byteorder='big')
+                if MeshCount == 0:
+                    MeshCount = 1
+                MeshTableOffset = int.from_bytes(CurFile.read(4),byteorder='big')+0x10
+                MaterialCount = int.from_bytes(CurFile.read(4),byteorder='big')
+                MaterialTableOffset = int.from_bytes(CurFile.read(4),byteorder='big')+0x10
+                
+                if os.path.exists(self.SkelPath):
+                    parse_boneref_names(self,CurFile,BoneCount,BoneNameOffset)
+                
+                if BoneCount <=255:
+                    self.BoneRefSize = 1
+                else:
+                    self.BoneRefSize = 2
+                for mc in range(MeshCount):
+                    CurFile.seek(MeshTableOffset+4*mc)
+                    MeshHeader = int.from_bytes(CurFile.read(4),byteorder='big')+0x10
+                    parse_mesh(self,CurFile,MeshHeader,CurCollection,ObjArm)
 
+            CurFile.close()
+            del CurFile
 
-        CurFile.close()
-        del CurFile
         return {'FINISHED'}
 
 def parse_mesh(self,CurFile,MeshHeader,CurCollection,ObjArm):
@@ -155,9 +156,13 @@ def parse_mesh(self,CurFile,MeshHeader,CurCollection,ObjArm):
         if VTypeFormat == -1:
             break
         VertData[VTypeIndex] = [VTypeOffset,VTypeFormat]
+    #print(VertData)
     
     VertPosOffset = VertData.get(0,[0])
     UVOffset = VertData.get(0x50000,[0])
+    UV2Offset = VertData.get(0x50100,[0])
+    UV3Offset = VertData.get(0x50200,[0])
+    UV4Offset = VertData.get(0x50300,[0])
     NormalsOffset = VertData.get(0x30000,[0])
     ColorOffset = VertData.get(0xA0000)
     WBoneTable = VertData.get(0x20000)
@@ -177,15 +182,31 @@ def parse_mesh(self,CurFile,MeshHeader,CurCollection,ObjArm):
     #CurFile.seek(VertChunkOffset)
     VertTable = []
     UVTable = []
+    UV2Table = []
+    UV3Table = []
+    UV4Table = []
     NormalTable = []
     ColorTable = []
     WeightTable = []
     for x in range(VertCount):
         CurFile.seek(VertChunkOffset+x*VertSize+VertPosOffset[0])
         VertTable.append(struct.unpack('>fff', CurFile.read(4*3)))
-        CurFile.seek(VertChunkOffset+x*VertSize+UVOffset[0])
-        TempUV = struct.unpack('>ee', CurFile.read(2*2))
-        UVTable.append((TempUV[0],1-TempUV[1]))
+        if UVOffset:
+            CurFile.seek(VertChunkOffset+x*VertSize+UVOffset[0])
+            TempUV = struct.unpack('>ee', CurFile.read(2*2))
+            UVTable.append((TempUV[0],1-TempUV[1]))
+        if UV2Offset:
+            CurFile.seek(VertChunkOffset+x*VertSize+UV2Offset[0])
+            TempUV = struct.unpack('>ee', CurFile.read(2*2))
+            UV2Table.append((TempUV[0],1-TempUV[1]))
+        if UV3Offset:
+            CurFile.seek(VertChunkOffset+x*VertSize+UV3Offset[0])
+            TempUV = struct.unpack('>ee', CurFile.read(2*2))
+            UV3Table.append((TempUV[0],1-TempUV[1]))
+        if UV4Offset:
+            CurFile.seek(VertChunkOffset+x*VertSize+UV4Offset[0])
+            TempUV = struct.unpack('>ee', CurFile.read(2*2))
+            UV4Table.append((TempUV[0],1-TempUV[1]))
         CurFile.seek(VertChunkOffset+x*VertSize+NormalsOffset[0])
         if NormalsOffset[1] == 0x2A23B9:
             TempNorm = mathutils.Vector(struct.unpack('>fff', CurFile.read(4*3))).normalized()
@@ -229,18 +250,29 @@ def parse_mesh(self,CurFile,MeshHeader,CurCollection,ObjArm):
             continue             
     bm.to_mesh(mesh)
 
-    uv_layer = bm.loops.layers.uv.verify()
+    if UVOffset:
+        uv_layer = bm.loops.layers.uv.verify() # gets UVMap
+    if UV2Offset:
+        uv2_layer = bm.loops.layers.uv.new('UVMap2')
+    if UV3Offset:
+        uv3_layer = bm.loops.layers.uv.new('UVMap3')
+    if UV4Offset:
+        uv4_layer = bm.loops.layers.uv.new('UVMap4')
+
     Normals = []
     for f in bm.faces:
         f.smooth=True
         for l in f.loops:
             if NormalTable != []:
                 Normals.append(NormalTable[l.vert.index])
-            luv = l[uv_layer]
-            try:
-                luv.uv = UVTable[l.vert.index]
-            except:
-                continue
+            if UVOffset:
+                l[uv_layer].uv  = UVTable[l.vert.index]  
+            if UV2Offset:
+                l[uv2_layer].uv = UV2Table[l.vert.index] 
+            if UV3Offset:
+                l[uv3_layer].uv = UV3Table[l.vert.index] 
+            if UV4Offset:
+                l[uv4_layer].uv = UV4Table[l.vert.index] 
     bm.to_mesh(mesh)
 
     if ColorOffset:
