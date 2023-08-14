@@ -41,10 +41,29 @@ class HedgeEngineTest(bpy.types.Operator, ImportHelper):
             description="Import mesh using strip notation",
             default=False,
             )
+    use_yx_orientation: BoolProperty(
+            name="Reorient Bones",
+            description="Reorient bones from XZ to YX to make bones coincide with limbs and enable mirror support",
+            default=False,
+            )
+    get_bone_lengths: BoolProperty(
+            name="Set Bone Lengths",
+            description="Roughly determine bone lengths (not great for models with really tiny/really long limbs)",
+            default=False,
+            )
+    aligned_scale: BoolProperty(
+            name="Aligned Scale Inheritance",
+            description="Set bone scale inheritance mode to \"Aligned,\" which is the scale mode used in Frontiers",
+            default=False,
+            )
     
     def draw(self, context):
         layout = self.layout
         layout.prop(self, "import_strips")
+        layout.prop(self, "use_yx_orientation")
+        layout.prop(self, "get_bone_lengths")
+        layout.prop(self, "aligned_scale")
+        
     def execute(self, context):
         CurCollection = bpy.data.collections.new("Mesh Collection")#Make Collection per lmd loaded
         bpy.context.scene.collection.children.link(CurCollection)
@@ -308,20 +327,33 @@ def parse_skeleton(self,CurCollection):
             SkelFile.seek(SkelNameOffset)
             BoneName = readZeroTermString(SkelFile)
             SkelFile.seek(SkelPosOffset+x*0x30)
-            BoneVec = struct.unpack('<fff', SkelFile.read(4*3))
+            TmpVec = struct.unpack('<fff', SkelFile.read(4*3))
+            if self.use_yx_orientation:
+                BoneVec = (TmpVec[2],TmpVec[0],TmpVec[1])
+            else:
+                BoneVec = (TmpVec[0],TmpVec[1],TmpVec[2])
             SkelFile.seek(4,1)
             TempRot = struct.unpack('<ffff', SkelFile.read(4*4))
-            BoneRot = (TempRot[3],TempRot[0],TempRot[1],TempRot[2])
-            
+            if self.use_yx_orientation:
+                BoneRot = (TempRot[3],TempRot[2],TempRot[0],TempRot[1]) #AdelQ
+            else:
+                BoneRot = (TempRot[3],TempRot[0],TempRot[1],TempRot[2])
+                
             SkelTable.append({"Pos":BoneVec,"Rot":BoneRot})
             
             edit_bone = armature_obj.data.edit_bones.new(BoneName)
             edit_bone.use_connect = False
             edit_bone.use_inherit_rotation = True
             edit_bone.use_inherit_scale = True
+            if self.aligned_scale:
+                edit_bone.inherit_scale = 'ALIGNED'
             edit_bone.use_local_location = True
             edit_bone.head = (0,0,0)
-            edit_bone.tail = (0,0.1,0)
+            if self.use_yx_orientation:
+                edit_bone.tail = (0.1,0,0)
+                edit_bone.roll = -1.5707963705062866
+            else:
+                edit_bone.tail = (0,0.1,0)
             if BoneParent > -1:
                 edit_bone.parent = armature_obj.data.edit_bones[BoneParent]
         utils_set_mode('POSE')
@@ -331,6 +363,16 @@ def parse_skeleton(self,CurCollection):
             pbone.rotation_quaternion = SkelTable[x]["Rot"]
             pbone.location = SkelTable[x]["Pos"]
         bpy.ops.pose.armature_apply()
+        
+        if self.get_bone_lengths: #AdelQ: Lazily approximate bone lengths
+            utils_set_mode('EDIT')
+            for x in range(SkelParentingCount):
+                edit_bone = armature_obj.data.edit_bones[x]
+                if edit_bone.parent: #AdelQ: Though not as ideal, calculating and setting the parent bone length is much faster than sampling child bones for each loop
+                    Len = (edit_bone.parent.head - edit_bone.head).length #AdelQ: More checks could be added to better determine which child bone should determine the parent bone's length in the future
+                    if 0.6 > Len > 0.02 and edit_bone.parent.parent: #AdelQ: Arbitrary lengths
+                        edit_bone.parent.length = Len
+        
         utils_set_mode('OBJECT')
         
         SkelFile.close()
