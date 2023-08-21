@@ -47,9 +47,50 @@ class HedgeEngineTest(bpy.types.Operator, ImportHelper):
             default=False,
             )
     get_bone_lengths: BoolProperty(
-            name="Set Bone Lengths",
-            description="Roughly determine bone lengths (not great for models with really tiny/really long limbs)",
+            name="Use Bone Lengths",
+            description="Calculate and apply approximate bone lengths",
             default=False,
+            )
+    
+    def update_min_length(self, context):
+        if self.get_bone_lengths_min > self.get_bone_lengths_max:
+            self.get_bone_lengths_min = self.get_bone_lengths_max
+    def update_max_length(self, context):
+        if self.get_bone_lengths_min > self.get_bone_lengths_max:
+            self.get_bone_lengths_max = self.get_bone_lengths_min
+            
+    get_bone_lengths_min: FloatProperty(
+            name="Minimum Length",
+            description="Calculated bone length will not exceed any lower than this value",
+            default=0.025,
+            min=0.01,
+            soft_max=1.0,
+            update=update_max_length,
+            )
+    get_bone_lengths_max: FloatProperty(
+            name="Maximum Length",
+            description="Calculated bone length will not exceed any higher than this value",
+            default=0.600,
+            min=0.01,
+            soft_max=1.0,
+            update=update_min_length,
+            )
+    get_bone_lengths_end: EnumProperty(
+            items=[
+                ("prevLength", "Parent Length", "Set end bone lengths to be the same as their respective parents", 1),
+                ("minLength", "Minimum length", "Set end bone lengths to the minimum", 2),
+                ("customLength", "Custom length", "Set end bone lengths to specified value", 3),
+                ],
+            name="End Bone Length",
+            description="Determines how the end bones' lengths will be determined",
+            default="prevLength",
+            )
+    get_bone_lengths_custom: FloatProperty(
+            name="End Bone Length",
+            description="End bone length",
+            default=0.100,
+            min=0.01,
+            soft_max=1.0,
             )
     aligned_scale: BoolProperty(
             name="Aligned Scale Inheritance",
@@ -59,10 +100,27 @@ class HedgeEngineTest(bpy.types.Operator, ImportHelper):
     
     def draw(self, context):
         layout = self.layout
-        layout.prop(self, "import_strips")
-        layout.prop(self, "use_yx_orientation")
-        layout.prop(self, "get_bone_lengths")
-        layout.prop(self, "aligned_scale")
+
+        uiMeshBox = layout.box()
+        uiMeshBox.label(text="Mesh Settings",icon="MESH_DATA")
+        uiMeshBox.prop(self, "import_strips",)
+        
+        
+        uiBoneBox = layout.box()
+        uiBoneBox.label(text="Armature Settings",icon="ARMATURE_DATA")
+        uiBoneBox.prop(self, "use_yx_orientation")
+        uiBoneBox.prop(self, "get_bone_lengths")
+    
+        uiLengthBox = uiBoneBox.box()
+        uiLengthRow = uiLengthBox.row()
+        uiLengthRow.prop(self, "get_bone_lengths_min")
+        uiLengthRow.prop(self, "get_bone_lengths_max")
+        uiLengthBox.prop(self, "get_bone_lengths_end")
+        if self.get_bone_lengths_end == "customLength":
+            uiLengthBox.prop(self, "get_bone_lengths_custom")
+        uiLengthBox.enabled = self.get_bone_lengths
+        
+        uiBoneBox.prop(self, "aligned_scale")
         
     def execute(self, context):
         CurCollection = bpy.data.collections.new("Mesh Collection")#Make Collection per lmd loaded
@@ -335,7 +393,7 @@ def parse_skeleton(self,CurCollection):
             SkelFile.seek(4,1)
             TempRot = struct.unpack('<ffff', SkelFile.read(4*4))
             if self.use_yx_orientation:
-                BoneRot = (TempRot[3],TempRot[2],TempRot[0],TempRot[1]) #AdelQ
+                BoneRot = (TempRot[3],TempRot[2],TempRot[0],TempRot[1])
             else:
                 BoneRot = (TempRot[3],TempRot[0],TempRot[1],TempRot[2])
                 
@@ -364,15 +422,35 @@ def parse_skeleton(self,CurCollection):
             pbone.location = SkelTable[x]["Pos"]
         bpy.ops.pose.armature_apply()
         
-        if self.get_bone_lengths: #AdelQ: Lazily approximate bone lengths
+        if self.get_bone_lengths: 
             utils_set_mode('EDIT')
             for x in range(SkelParentingCount):
                 edit_bone = armature_obj.data.edit_bones[x]
-                if edit_bone.parent: #AdelQ: Though not as ideal, calculating and setting the parent bone length is much faster than sampling child bones for each loop
-                    Len = (edit_bone.parent.head - edit_bone.head).length #AdelQ: More checks could be added to better determine which child bone should determine the parent bone's length in the future
-                    if 0.6 > Len > 0.02 and edit_bone.parent.parent: #AdelQ: Arbitrary lengths
-                        edit_bone.parent.length = Len
-        
+                child_bone = None
+                
+                for child_bone_test in edit_bone.children: # Find child with the most children as the bone to calculate length from
+                    test = 0
+                    count = len(child_bone_test.children_recursive)
+                    if child_bone_test == edit_bone.children[0] or test < count:
+                        test = count
+                        child_bone = child_bone_test
+                
+                if child_bone:
+                    Len = (edit_bone.head - child_bone.head).length
+                elif self.get_bone_lengths_end == "prevLength":
+                    Len = edit_bone.parent.length
+                elif self.get_bone_lengths_end == "customLength":
+                    Len = self.get_bone_lengths_custom
+                else:
+                    Len = self.get_bone_lengths_min
+                
+                if Len > self.get_bone_lengths_max:
+                    edit_bone.length = self.get_bone_lengths_max
+                elif Len < self.get_bone_lengths_min:
+                    edit_bone.length = self.get_bone_lengths_min
+                else:
+                    edit_bone.length = Len
+                
         utils_set_mode('OBJECT')
         
         SkelFile.close()
