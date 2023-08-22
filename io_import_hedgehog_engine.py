@@ -42,7 +42,7 @@ class HedgeEngineTest(bpy.types.Operator, ImportHelper):
             default=False,
             )
     use_yx_orientation: BoolProperty(
-            name="Reorient Bones",
+            name="Use YX Bone Orientation",
             description="Reorient bones from XZ to YX to make bones coincide with limbs and enable mirror support",
             default=False,
             )
