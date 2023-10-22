@@ -118,8 +118,8 @@ class HedgeEngineTest(bpy.types.Operator, ImportHelper):
         if self.get_bone_lengths_end == "customLength":
             uiLengthBox.prop(self, "get_bone_lengths_custom")
         uiLengthBox.enabled = self.get_bone_lengths
-        
         uiBoneBox.prop(self, "aligned_scale")
+
 
     def execute(self, context):
         dirname = os.path.dirname(self.filepath)
