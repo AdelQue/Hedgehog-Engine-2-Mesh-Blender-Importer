@@ -1,7 +1,7 @@
 bl_info = {
     "name": "Hedgehog Engine 2 Import",
     "author": "Turk",
-    "version": (1, 0, 0),
+    "version": (1, 0, 1),
     "blender": (2, 82, 0),
     "location": "File > Import-Export",
     "description": "A script to import meshes from Hedgehog Engine 2 games",
@@ -402,7 +402,6 @@ def parse_skeleton(self,CurCollection):
             edit_bone = armature_obj.data.edit_bones.new(BoneName)
             edit_bone.use_connect = False
             edit_bone.use_inherit_rotation = True
-            edit_bone.use_inherit_scale = True
             if self.aligned_scale:
                 edit_bone.inherit_scale = 'ALIGNED'
             edit_bone.use_local_location = True
