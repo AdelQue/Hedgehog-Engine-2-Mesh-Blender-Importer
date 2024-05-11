@@ -308,7 +308,7 @@ def parse_mesh(self,CurFile,MeshHeader,CurCollection,ObjArm):
         
     #buildMesh
     mesh1 = bpy.data.meshes.new("Mesh")
-    mesh1.use_auto_smooth = True
+    # mesh1.use_auto_smooth = True
     obj = bpy.data.objects.new(MaterialName,mesh1)
     CurCollection.objects.link(obj)
     bpy.context.view_layer.objects.active = obj
