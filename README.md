@@ -1,8 +1,9 @@
 # Stop using this for now
-Use [modelfbx.exe from Dario's LibGens](https://github.com/DarioSamo/libgens-sonicglvl/) to import *.model files now. It has less issues, supports newer formats, doesn't require a separate skeleton file, and this model importer has nothing that modelfbx doesn't already offer. This repo won't be archived yet because maybe it will be updated, but for now there's no reason to use this. If 
+UPDATE: Check out [HEIO](https://hedge-dev.github.io/HedgehogEngineBlenderIO/index.html) for an alternative native model importer with more file support, better documentation, and less issues. This tool is now obsolete.
 
 For animation imports and exports, use the [FrontiersAnimDecompress Blender addon](https://github.com/WistfulHopes/FrontiersAnimDecompress). It supports both compressed and uncompressed *.anm.pxd files with more stability and with correct scaling, as well as standalone *.skl.pxd importing.
 
+For a more general purpose model extraction, use [modelfbx.exe from Dario's LibGens](https://github.com/DarioSamo/libgens-sonicglvl/) to convert .model files to .fbx, which should continue to work on any version of Blender.
 .
 
 .
